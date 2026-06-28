@@ -11,14 +11,20 @@ import {
   Checkbox,
   Chip,
   CssBaseline,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   Grid,
+  Menu,
   MenuItem,
   Paper,
   Stack,
   Step,
   StepButton,
   Stepper,
+  SvgIcon,
   TextField,
   ThemeProvider,
   Typography,
@@ -27,19 +33,19 @@ import {
 } from "@mui/material";
 import MapPanel from "./components/MapPanel";
 import {
-  analyzeOverlap,
   createDelivery,
   createOperator,
   optimizeDynamicRoute,
 } from "./api/alba";
 import logoUrl from "../logo.jpeg";
+import deliveryImg1 from "./static/img1.png";
+import deliveryImg2 from "./static/img2.png";
+import deliveryImg3 from "./static/img3.png";
 import "./styles/app.css";
 
 const STEPS = [
-  ["Operador", "Autenticación y datos mínimos del operador"],
-  ["Entrega", "Puntos de carga y descarga en la Comunitat Valenciana"],
-  ["Privacidad", "Soberanía de datos y anonimización"],
-  ["Solapamiento", "Detección de entregas compatibles entre operadores"],
+  ["Operador", "Datos del operador y consentimiento de privacidad"],
+  ["Carga y Descarga", "Puntos de carga y descarga en la Comunitat Valenciana"],
   ["Mapa", "Selección dinámica de puntos y rutas optimizadas"],
 ];
 
@@ -48,8 +54,16 @@ const ENTRY_MODES = [
   { value: "PRIVATE_COMPANY", label: "Empresa privada", hint: "Plan diario de rutas y flota corporativa" },
   { value: "INDIVIDUAL_PERSON", label: "Persona individual", hint: "Operador autónomo o reparto puntual" },
 ];
+const DELIVERY_IMAGES = [
+  { src: deliveryImg1, alt: "Carga" },
+  { src: deliveryImg2, alt: "Ruta logística" },
+  { src: deliveryImg3, alt: "Descarga" },
+];
 const VEHICLE_TYPES = ["Flota mixta", "Furgoneta diésel", "Furgoneta eléctrica", "Cargo bike", "Reparto a pie"];
 const PRIORITIES = ["Baja", "Normal", "Alta"];
+const URBAN_AVERAGE_SPEED_KMH = 18;
+const OPERATING_COST_EUR_PER_KM = 0.72;
+const EMPTY_ROUTES = [];
 const RELOAD_OPTIONS = [
   { value: "manual", label: "Manual", ms: 0 },
   { value: "10s", label: "Cada 10 segundos", ms: 10000 },
@@ -72,16 +86,16 @@ const COMPANY_PLAN = {
   co2SavingWithOptimization: 31,
 };
 
-const theme = createTheme({
+const buildTheme = (mode) => createTheme({
   palette: {
-    mode: "dark",
-    background: { default: "#000000", paper: "#1a1a1a" },
+    mode,
+    background: mode === "dark" ? { default: "#000000", paper: "#1a1a1a" } : { default: "#f6f8fb", paper: "#ffffff" },
     primary: { main: "#024ad8", light: "#296ef9", dark: "#0e3191", contrastText: "#ffffff" },
     secondary: { main: "#8ebdce", contrastText: "#000000" },
     success: { main: "#32c86a", contrastText: "#001b0b" },
     warning: { main: "#ff5050", contrastText: "#ffffff" },
-    text: { primary: "#ffffff", secondary: "#c2c2c2" },
-    divider: "#3d3d3d",
+    text: mode === "dark" ? { primary: "#ffffff", secondary: "#c2c2c2" } : { primary: "#172033", secondary: "#5f6b7a" },
+    divider: mode === "dark" ? "#3d3d3d" : "#d8e1ea",
   },
   shape: { borderRadius: 8 },
   typography: {
@@ -193,8 +207,35 @@ function normalizeBackendRoute(data) {
   }, point.label || `P${index + 1}`)).filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon));
 }
 
+function routeKey(points) {
+  return points.map((point) => `${point.lat},${point.lon}`).join("|");
+}
+
+function buildAlternativeRoutes({ original, optimized, loadingPoint, unloadingPoint, waypoints }) {
+  const seen = new Set([routeKey(original), routeKey(optimized)]);
+  const routes = [];
+  const add = (label, points) => {
+    const route = points.filter(Boolean);
+    const key = routeKey(route);
+    if (route.length < 2 || seen.has(key)) return;
+    seen.add(key);
+    routes.push({ label, points: route, distance: `${distanceKm(route).toFixed(1)} km` });
+  };
+
+  if (loadingPoint && unloadingPoint) {
+    add("Alternativa inversa", [loadingPoint, ...[...waypoints].reverse(), unloadingPoint]);
+    add("Alternativa balanceada", [loadingPoint, ...waypoints.slice(1), waypoints[0], unloadingPoint]);
+  } else {
+    add("Alternativa inversa", [...waypoints].reverse());
+    add("Alternativa balanceada", [waypoints[0], ...waypoints.slice(2), waypoints[1]]);
+  }
+
+  return routes.slice(0, 2);
+}
+
 export default function App() {
   const mobile = useMediaQuery("(max-width: 760px)");
+  const [themeMode, setThemeMode] = useState("dark");
   const [activeStep, setActiveStep] = useState(0);
   const [maxStepReached, setMaxStepReached] = useState(0);
   const [operator, setOperator] = useState(initialOperator);
@@ -202,13 +243,14 @@ export default function App() {
   const [delivery, setDelivery] = useState(initialDelivery);
   const [deliveryResult, setDeliveryResult] = useState(null);
   const [privacyOk, setPrivacyOk] = useState(false);
-  const [overlap, setOverlap] = useState(null);
   const [loadingPoint, setLoadingPoint] = useState(null);
   const [unloadingPoint, setUnloadingPoint] = useState(null);
   const [waypoints, setWaypoints] = useState([]);
   const [mapMode, setMapMode] = useState("none");
   const [routeResult, setRouteResult] = useState(null);
+  const [showAlternatives, setShowAlternatives] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
+  const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [reloadInterval, setReloadInterval] = useState("manual");
   const [lastUpdated, setLastUpdated] = useState(() => new Date());
@@ -219,6 +261,7 @@ export default function App() {
     () => RELOAD_OPTIONS.find((option) => option.value === reloadInterval) || RELOAD_OPTIONS[0],
     [reloadInterval],
   );
+  const appTheme = useMemo(() => buildTheme(themeMode), [themeMode]);
 
   useEffect(() => {
     if (!reloadOption.ms) {
@@ -239,6 +282,12 @@ export default function App() {
       window.clearTimeout(timeoutId);
     };
   }, [reloadOption.ms]);
+
+  useEffect(() => {
+    const lastStep = STEPS.length - 1;
+    if (activeStep > lastStep) setActiveStep(lastStep);
+    if (maxStepReached > lastStep) setMaxStepReached(lastStep);
+  }, [activeStep, maxStepReached]);
 
   const operatorReady = operator.name.trim()
     && operator.operatorType
@@ -274,6 +323,7 @@ export default function App() {
       setUnloadingPoint(null);
       setWaypoints([]);
       setRouteResult(null);
+      setShowAlternatives(false);
       setMapMode("none");
     }
     setDelivery({ ...delivery, [field]: value });
@@ -282,6 +332,10 @@ export default function App() {
   async function saveOperator() {
     if (!operatorReady) {
       setMessage("Completa los datos obligatorios del operador.");
+      return false;
+    }
+    if (!privacyOk) {
+      setMessage("Acepta el consentimiento de privacidad para continuar.");
       return false;
     }
     setBusy("operator");
@@ -344,59 +398,11 @@ export default function App() {
     return true;
   }
 
-  async function detectOverlap() {
-    setBusy("overlap");
-    setMessage("");
-    const payload = { operator: safeOperatorPayload(), delivery };
-    try {
-      const data = await analyzeOverlap(payload);
-      setOverlap(normalizeOverlap(data));
-    } catch {
-      setOverlap({
-        area: delivery.area,
-        compatibleOperators: delivery.area.includes("Valencia") || delivery.area === "Ciutat Vella" ? 3 : 2,
-        compatibleDeliveries: delivery.priority === "Alta" ? 4 : 3,
-        timeWindowCompatibility: `${delivery.timeStart} - ${delivery.timeEnd}`,
-        totalVolume: Number(delivery.packageVolume) * 3,
-        totalWeight: Number(delivery.packageWeight) * 3,
-        consolidationPossible: true,
-        suggestedVehicle: operator.vehicleType.includes("eléctrica") ? "Furgoneta eléctrica" : "Cargo bike + microhub",
-        estimatedBenefit: `Entregas compatibles en ${delivery.area}; la carga agregada cabe en una ruta consolidada.`,
-        source: "demo local",
-      });
-    } finally {
-      setBusy("");
-    }
-  }
-
-  function safeOperatorPayload() {
-    return {
-      operator_id: operatorResult?.id,
-      operatorType: operator.operatorType,
-      vehicle_type: operator.vehicleType,
-      companyRoutePlan: operator.operatorType === "PRIVATE_COMPANY" ? COMPANY_PLAN : null,
-    };
-  }
-
-  function normalizeOverlap(data) {
-    return {
-      area: data.area || delivery.area,
-      compatibleOperators: data.compatibleOperators || data.compatible_operators || 0,
-      compatibleDeliveries: data.compatibleDeliveries || data.compatible_deliveries || 0,
-      timeWindowCompatibility: data.timeWindowCompatibility || data.time_window_compatibility || `${delivery.timeStart} - ${delivery.timeEnd}`,
-      totalVolume: data.totalVolume || data.total_volume || Number(delivery.packageVolume),
-      totalWeight: data.totalWeight || data.total_weight || Number(delivery.packageWeight),
-      consolidationPossible: Boolean(data.consolidationPossible ?? data.consolidation_possible ?? true),
-      suggestedVehicle: data.suggestedVehicle || data.suggested_vehicle || operator.vehicleType,
-      estimatedBenefit: data.estimatedBenefit || data.estimated_benefit || "Consolidación posible con datos de área.",
-      source: "backend",
-    };
-  }
-
   function handleMapPoint(latlng) {
     if (!delivery.useDynamicPoints) return;
     const point = { id: id(), lat: Number(latlng.lat.toFixed(6)), lon: Number(latlng.lng.toFixed(6)) };
     setRouteResult(null);
+    setShowAlternatives(false);
     if (mapMode === "loading") {
       setLoadingPoint({ ...point, label: "Carga" });
       setDelivery({ ...delivery, loadingPointPending: false });
@@ -412,6 +418,7 @@ export default function App() {
 
   function removePoint(kind, pointId) {
     setRouteResult(null);
+    setShowAlternatives(false);
     if (kind === "loading") {
       setLoadingPoint(null);
       setDelivery({ ...delivery, loadingPointPending: true });
@@ -428,6 +435,7 @@ export default function App() {
     setUnloadingPoint(null);
     setWaypoints([]);
     setRouteResult(null);
+    setShowAlternatives(false);
     setMapMode("none");
     setDelivery({ ...delivery, loadingPointPending: true, unloadingPointPending: true });
   }
@@ -441,6 +449,7 @@ export default function App() {
       return;
     }
     setBusy("route");
+    setShowAlternatives(false);
     const original = selectedPoints;
     const fallbackOptimized = loadingPoint && unloadingPoint
       ? [loadingPoint, ...nearestFrom(loadingPoint, waypoints), unloadingPoint]
@@ -467,16 +476,21 @@ export default function App() {
 
     const originalDistance = distanceKm(original);
     const optimizedDistance = distanceKm(optimizedPoints);
+    const savedKm = Math.max(0, originalDistance - optimizedDistance);
+    const savedMinutes = Math.round((savedKm / URBAN_AVERAGE_SPEED_KMH) * 60);
     const factor = emissionFactor(operator.vehicleType);
     setRouteResult({
       source,
       originalRoute: original,
       optimizedRoute: optimizedPoints,
+      alternativeRoutes: buildAlternativeRoutes({ original, optimized: optimizedPoints, loadingPoint, unloadingPoint, waypoints }),
       metrics: {
         vehicles: optimizedPoints.length > 3 ? 2 : 1,
         distance: `${originalDistance.toFixed(1)} km → ${optimizedDistance.toFixed(1)} km`,
         co2: `${(originalDistance * factor).toFixed(2)} kg → ${(optimizedDistance * factor).toFixed(2)} kg`,
         saving: `${Math.max(0, Math.round((1 - optimizedDistance / Math.max(originalDistance, 0.1)) * 100))}% estimado`,
+        money: (savedKm * OPERATING_COST_EUR_PER_KM).toLocaleString("es-ES", { style: "currency", currency: "EUR" }),
+        time: savedMinutes < 1 && savedKm > 0 ? "< 1 min" : `${savedMinutes} min`,
       },
     });
   }
@@ -484,32 +498,24 @@ export default function App() {
   async function goNext() {
     if (activeStep === 0 && !(await saveOperator())) return;
     if (activeStep === 1 && !(await saveDelivery())) return;
-    if (activeStep === 2 && !privacyOk) {
-      setMessage("Confirma la privacidad para continuar.");
-      return;
-    }
-    if (activeStep === 3 && !overlap) {
-      setMessage("Detecta el solapamiento antes de continuar.");
-      return;
-    }
     setMessage("");
     const nextStep = Math.min(activeStep + 1, STEPS.length - 1);
     setMaxStepReached(Math.max(maxStepReached, nextStep));
     setActiveStep(nextStep);
   }
 
-  const primaryLabel = ["Crear operador", "Guardar entrega", "Confirmar privacidad", "Siguiente", "Finalizar selección"][activeStep];
+  const primaryLabel = ["Crear operador", "Guardar carga y descarga"][activeStep];
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={appTheme}>
       <CssBaseline />
-      <div className="app">
+      <div className={`app app--${themeMode}`}>
         <header className="topbar">
           <div className="brand">
             <img className="brand-logo" src={logoUrl} alt="ECOFLUX" />
             <div>
               <div className="brand-name">ECOFLUX</div>
-              <div className="brand-sub">CargaSync Valencia · Data Space logístico</div>
+              <div className="brand-sub">Última milla de Valencia · Data Space logístico</div>
             </div>
           </div>
           <div className="header-right">
@@ -519,13 +525,29 @@ export default function App() {
               className="profile-button"
               size="small"
               variant="outlined"
-              onClick={() => {
-                setProfileNotice("Ajustes de perfil no disponibles en la demo");
-                window.setTimeout(() => setProfileNotice(""), 2400);
-              }}
+              onClick={(event) => setProfileAnchorEl(event.currentTarget)}
             >
               Perfil
             </Button>
+            <Menu anchorEl={profileAnchorEl} open={Boolean(profileAnchorEl)} onClose={() => setProfileAnchorEl(null)}>
+              <MenuItem
+                onClick={() => {
+                  setProfileAnchorEl(null);
+                  setProfileNotice("Edición de configuración no disponible en la demo");
+                  window.setTimeout(() => setProfileNotice(""), 2400);
+                }}
+              >
+                Editar configuracion
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setThemeMode((mode) => (mode === "dark" ? "light" : "dark"));
+                  setProfileAnchorEl(null);
+                }}
+              >
+                Cambiar tema
+              </MenuItem>
+            </Menu>
           </div>
         </header>
         {profileNotice ? <Alert className="profile-notice" severity="info">{profileNotice}</Alert> : null}
@@ -548,6 +570,7 @@ export default function App() {
           <Paper className="flow-card" elevation={0}>
             <Stack spacing={2}>
               <Box>
+                {activeStep === 1 ? <DeliveryTitleImages mobile={mobile} /> : null}
                 <Typography variant="overline" color="text.secondary">{STEPS[activeStep][0]}</Typography>
                 <Typography variant="h5">{STEPS[activeStep][1]}</Typography>
               </Box>
@@ -560,6 +583,8 @@ export default function App() {
                   update={updateOperator}
                   selectEntryMode={selectEntryMode}
                   operatorResult={operatorResult}
+                  privacyOk={privacyOk}
+                  setPrivacyOk={setPrivacyOk}
                 />
               ) : null}
               {activeStep === 1 ? (
@@ -574,12 +599,6 @@ export default function App() {
                 />
               ) : null}
               {activeStep === 2 ? (
-                <PrivacyStep privacyOk={privacyOk} setPrivacyOk={setPrivacyOk} />
-              ) : null}
-              {activeStep === 3 ? (
-                <OverlapStep overlap={overlap} busy={busy} detectOverlap={detectOverlap} />
-              ) : null}
-              {activeStep === 4 ? (
                 <MapStep
                   mapMode={mapMode}
                   setMapMode={setMapMode}
@@ -592,13 +611,23 @@ export default function App() {
                   optimizeRoute={optimizeRoute}
                   busy={busy}
                   routeResult={routeResult}
-                  companyPlan={COMPANY_PLAN}
+                  showAlternatives={showAlternatives}
+                  setShowAlternatives={setShowAlternatives}
                   canSelectPoints={delivery.useDynamicPoints}
                   reloadInterval={reloadInterval}
                   setReloadInterval={setReloadInterval}
                   reloadOption={reloadOption}
                   lastUpdated={lastUpdated}
                   isReloading={isReloading}
+                />
+              ) : null}
+              {activeStep === 2 ? (
+                <StatsAccordion
+                  operator={operator}
+                  delivery={delivery}
+                  routeResult={routeResult}
+                  selectedPoints={selectedPoints}
+                  reloadLabel={reloadOption.label}
                 />
               ) : null}
             </Stack>
@@ -608,11 +637,11 @@ export default function App() {
             <Button disabled={activeStep === 0 || Boolean(busy)} onClick={() => setActiveStep(activeStep - 1)}>
               Atrás
             </Button>
-            {activeStep < 4 ? (
+            {activeStep < 2 ? (
               <Button
                 variant="contained"
                 onClick={goNext}
-                disabled={Boolean(busy) || (activeStep === 2 && !privacyOk) || (activeStep === 3 && !overlap)}
+                disabled={Boolean(busy)}
               >
                 {busy ? "Procesando..." : primaryLabel}
               </Button>
@@ -624,7 +653,30 @@ export default function App() {
   );
 }
 
-function OperatorStep({ operator, update, selectEntryMode, operatorResult }) {
+function DeliveryTitleImages({ mobile }) {
+  const images = mobile ? [DELIVERY_IMAGES[1]] : DELIVERY_IMAGES;
+  return (
+    <div className="delivery-title-images">
+      {images.map((image) => (
+        <img key={image.src} src={image.src} alt={image.alt} />
+      ))}
+    </div>
+  );
+}
+
+function EntryModeIcon({ value }) {
+  return (
+    <SvgIcon className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {value === "PRIVATE_COMPANY" ? (
+        <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z" />
+      ) : (
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+      )}
+    </SvgIcon>
+  );
+}
+
+function OperatorStep({ operator, update, selectEntryMode, operatorResult, privacyOk, setPrivacyOk }) {
   return (
     <Stack spacing={2}>
       <div className="choice-grid">
@@ -635,26 +687,12 @@ function OperatorStep({ operator, update, selectEntryMode, operatorResult }) {
             variant={operator.operatorType === mode.value ? "contained" : "outlined"}
             onClick={() => selectEntryMode(mode.value)}
           >
+            <EntryModeIcon value={mode.value} />
             <strong>{mode.label}</strong>
             <span>{mode.hint}</span>
           </Button>
         ))}
       </div>
-      {operator.operatorType === "PRIVATE_COMPANY" ? (
-        <>
-          <div className="company-header">
-            <span>Nombre cliente: {COMPANY_PLAN.clientName}</span>
-            <span>Plan rutas día: {COMPANY_PLAN.planDate}</span>
-          </div>
-          <div className="stat-grid">
-            <Metric label="Zona" value={COMPANY_PLAN.zone} />
-            <Metric label="Nº total de rutas" value={COMPANY_PLAN.totalRoutes} />
-            <Metric label="Km de recorrido previstos" value={COMPANY_PLAN.plannedKm.toLocaleString("es-ES")} />
-            <Metric label="% rutas 0 emisiones" value={`${COMPANY_PLAN.zeroEmissionRoutesPercentage}%`} />
-            <Metric label="Ahorro CO₂ optimizado" value={`${COMPANY_PLAN.co2SavingWithOptimization}%`} />
-          </div>
-        </>
-      ) : null}
       <Grid container spacing={2}>
       <Grid item xs={12} md={6}><TextField fullWidth required label="Nombre cliente / operador" value={operator.name} onChange={update("name")} /></Grid>
       <Grid item xs={12} md={6}><TextField fullWidth label="Email opcional" type="email" value={operator.email} onChange={update("email")} /></Grid>
@@ -666,6 +704,7 @@ function OperatorStep({ operator, update, selectEntryMode, operatorResult }) {
         <Grid item xs={12}><Alert severity="success">Operador registrado como {operatorResult.id}. Los campos sensibles no se muestran de nuevo.</Alert></Grid>
       ) : null}
       </Grid>
+      <PrivacyConsent privacyOk={privacyOk} setPrivacyOk={setPrivacyOk} />
     </Stack>
   );
 }
@@ -730,46 +769,36 @@ function DeliveryStep({
   );
 }
 
-function PrivacyStep({ privacyOk, setPrivacyOk }) {
+function PrivacyConsent({ privacyOk, setPrivacyOk }) {
+  const [open, setOpen] = useState(false);
   const shared = ["Área de entrega", "Ventana horaria", "Volumen del paquete", "Peso del paquete", "Tipo de vehículo", "Capacidad del vehículo", "Clase de emisiones"];
   const protectedData = ["Identidad del cliente", "Dirección privada exacta", "Identidad del conductor", "Matrícula", "Estrategia comercial interna", "Identificadores brutos del operador"];
   return (
-    <Stack spacing={2}>
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}><DataList title="Compartido con el Data Space" items={shared} /></Grid>
-        <Grid item xs={12} md={6}><DataList title="Protegido" items={protectedData} /></Grid>
-      </Grid>
-      <Alert severity="info">Solo se comparte el mínimo dato operativo necesario para coordinar. Los campos sensibles se anonimizan antes de entrar al Data Space.</Alert>
+    <div className="privacy-consent">
       <FormControlLabel
         control={<Checkbox checked={privacyOk} onChange={(event) => setPrivacyOk(event.target.checked)} />}
-        label="Entiendo que solo se compartirán datos operativos mínimos para la coordinación."
+        label="Acepto compartir solo los datos operativos mínimos para coordinar la carga."
       />
-    </Stack>
-  );
-}
-
-function OverlapStep({ overlap, busy, detectOverlap }) {
-  return (
-    <Stack spacing={2}>
-      <Button variant="contained" onClick={detectOverlap} disabled={busy === "overlap"}>
-        {busy === "overlap" ? "Analizando..." : "Detectar solapamiento"}
+      <Button size="small" variant="text" onClick={() => setOpen(true)}>
+        Ver texto de consentimiento
       </Button>
-      {overlap ? (
-        <div className="analysis-card">
-          <Metric label="Área" value={overlap.area} />
-          <Metric label="Operadores compatibles" value={overlap.compatibleOperators} />
-          <Metric label="Entregas compatibles" value={overlap.compatibleDeliveries} />
-          <Metric label="Ventana compatible" value={overlap.timeWindowCompatibility} />
-          <Metric label="Volumen total" value={overlap.totalVolume} />
-          <Metric label="Peso total" value={overlap.totalWeight} />
-          <Metric label="Consolidación posible" value={overlap.consolidationPossible ? "Sí" : "No"} />
-          <Metric label="Vehículo sugerido" value={overlap.suggestedVehicle} />
-          <Alert severity="success">{overlap.estimatedBenefit}</Alert>
-        </div>
-      ) : (
-        <Alert severity="info">El análisis funciona con entregas por área, sin exigir coordenadas exactas.</Alert>
-      )}
-    </Stack>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Consentimiento de privacidad</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity="info">Solo se comparte el mínimo dato operativo necesario para coordinar. Los campos sensibles se anonimizan antes de entrar al Data Space.</Alert>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}><DataList title="Compartido con el Data Space" items={shared} /></Grid>
+              <Grid item xs={12} md={6}><DataList title="Protegido" items={protectedData} /></Grid>
+            </Grid>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Cerrar</Button>
+          <Button variant="contained" onClick={() => { setPrivacyOk(true); setOpen(false); }}>Aceptar</Button>
+        </DialogActions>
+      </Dialog>
+    </div>
   );
 }
 
@@ -786,7 +815,8 @@ function MapStep(props) {
     optimizeRoute,
     busy,
     routeResult,
-    companyPlan,
+    showAlternatives,
+    setShowAlternatives,
     canSelectPoints,
     reloadInterval,
     setReloadInterval,
@@ -795,20 +825,12 @@ function MapStep(props) {
     isReloading,
   } = props;
   const selectedPoints = canSelectPoints ? [loadingPoint, ...waypoints, unloadingPoint].filter(Boolean) : [];
+  const alternativeRoutes = showAlternatives ? routeResult?.alternativeRoutes || EMPTY_ROUTES : EMPTY_ROUTES;
 
   return (
     <Grid container spacing={2}>
       <Grid item xs={12} lg={8}>
         <Stack spacing={1.5}>
-          <div className="map-plan-summary">
-            <Metric label="Nombre cliente" value={companyPlan.clientName} />
-            <Metric label="Plan rutas día" value={companyPlan.planDate} />
-            <Metric label="Zona" value={companyPlan.zone} />
-            <Metric label="Nº total de rutas" value={companyPlan.totalRoutes} />
-            <Metric label="Km previstos" value={companyPlan.plannedKm.toLocaleString("es-ES")} />
-            <Metric label="% 0 rutas vehiculos emisiones" value={`${companyPlan.zeroEmissionRoutesPercentage}%`} />
-            <Metric label="Ahorro CO₂ optimizado" value={`${companyPlan.co2SavingWithOptimization}%`} />
-          </div>
           <div className="map-mode-bar">
             <Button disabled={!canSelectPoints} variant={mapMode === "loading" ? "contained" : "outlined"} onClick={() => setMapMode("loading")}>Seleccionar punto de carga</Button>
             <Button disabled={!canSelectPoints} variant={mapMode === "unloading" ? "contained" : "outlined"} onClick={() => setMapMode("unloading")}>Seleccionar punto de descarga</Button>
@@ -818,6 +840,11 @@ function MapStep(props) {
             <Button variant="contained" onClick={optimizeRoute} disabled={busy === "route"}>
               {busy === "route" ? "Optimizando..." : "Optimizar rutas"}
             </Button>
+            {routeResult ? (
+              <Button variant={showAlternatives ? "contained" : "outlined"} onClick={() => setShowAlternatives(!showAlternatives)}>
+                {showAlternatives ? "Ocultar alternativas" : "Ver rutas alternativas"}
+              </Button>
+            ) : null}
             <TextField
               select
               size="small"
@@ -841,6 +868,7 @@ function MapStep(props) {
             waypoints={waypoints}
             originalRoute={routeResult?.originalRoute || selectedPoints}
             optimizedRoute={routeResult?.optimizedRoute || []}
+            alternativeRoutes={alternativeRoutes}
             onMapPoint={onMapPoint}
             canSelectPoints={canSelectPoints}
             reloadLabel={reloadOption.label}
@@ -859,6 +887,7 @@ function MapStep(props) {
           />
           <TechnicalCoordinates loadingPoint={loadingPoint} unloadingPoint={unloadingPoint} waypoints={waypoints} />
           {routeResult ? <RouteMetrics routeResult={routeResult} /> : null}
+          {showAlternatives ? <AlternativeRoutes routes={alternativeRoutes} /> : null}
         </Stack>
       </Grid>
     </Grid>
@@ -911,15 +940,45 @@ function TechnicalCoordinates({ loadingPoint, unloadingPoint, waypoints }) {
   );
 }
 
+function AlternativeRoutes({ routes }) {
+  return (
+    <div className="alternative-routes">
+      <Typography variant="subtitle2">Rutas alternativas</Typography>
+      {routes.length ? routes.map((route) => (
+        <Metric key={route.label} label={route.label} value={route.distance} />
+      )) : <p>No hay alternativas suficientes con los puntos actuales.</p>}
+    </div>
+  );
+}
+
 function RouteMetrics({ routeResult }) {
   return (
     <div className="metrics-summary">
-      <Metric label="Origen" value={routeResult.source} />
-      <Metric label="Vehículos" value={routeResult.metrics.vehicles} />
       <Metric label="Distancia" value={routeResult.metrics.distance} />
       <Metric label="CO₂" value={routeResult.metrics.co2} />
-      <Metric label="Ahorro" value={routeResult.metrics.saving} />
+      <Metric label="Ahorro CO2" value={routeResult.metrics.saving} />
+      <Metric label="Ahorro €" value={routeResult.metrics.money} />
+      <Metric label="Tiempo ahorrado" value={routeResult.metrics.time} />
     </div>
+  );
+}
+
+function StatsAccordion({ operator, delivery, routeResult, selectedPoints, reloadLabel }) {
+  return (
+    <details className="stats-accordion">
+      <summary>Estadísticas del flujo</summary>
+      <div className="stats-grid">
+        <Metric label="Operador" value={operator.name || "Pendiente"} />
+        <Metric label="Tipo" value={operator.operatorType === "PRIVATE_COMPANY" ? "Empresa" : "Persona"} />
+        <Metric label="Área" value={delivery.area} />
+        <Metric label="Puntos mapa" value={selectedPoints.length} />
+        <Metric label="Recarga" value={reloadLabel} />
+        <Metric label="Distancia" value={routeResult?.metrics?.distance || "Sin optimizar"} />
+        <Metric label="CO₂" value={routeResult?.metrics?.co2 || "Sin optimizar"} />
+        <Metric label="Ahorro €" value={routeResult?.metrics?.money || "Sin optimizar"} />
+        <Metric label="Tiempo" value={routeResult?.metrics?.time || "Sin optimizar"} />
+      </div>
+    </details>
   );
 }
 
