@@ -17,7 +17,7 @@ _HMAC_DEV_SENTINEL = "alba-dev-secret-change-in-prod"
 class Settings(BaseSettings):
     # ── Groq ──────────────────────────────────────────────────────────────
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = "llama3-8b-8192"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"  # modelo activo — verificado 2026-06
     GROQ_TEMPERATURE: float = 0.0
     GROQ_MAX_TOKENS: int = 1024
 
@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # SIN valor por defecto fuerte: si falta en .env, arranca en modo dev con
     # advertencia. En producción debe definirse con mínimo 32 caracteres aleatorios.
     HMAC_SECRET: str = os.getenv("HMAC_SECRET", _HMAC_DEV_SENTINEL)
+    # Salt fijo para HMAC determinista — garantiza reproductibilidad para auditorías RGPD.
+    # Distinto de HMAC_SECRET: puede ser público; el secreto es HMAC_SECRET.
+    HMAC_SALT: str = os.getenv("HMAC_SALT", "alba-hmac-salt-v1")
 
     @field_validator("HMAC_SECRET")
     @classmethod
@@ -74,7 +77,7 @@ class Settings(BaseSettings):
     ICV_WFS_URL: str = os.getenv("ICV_WFS_URL", "")
     GIS_TIMEOUT_SECONDS: float = float(os.getenv("GIS_TIMEOUT_SECONDS", "15"))
 
-    # ── Valencia Demo Data ─────────────────────────────────────────────────
+    # ── Valencia Demo Data (usadas en route_optimizer_adapter) ─────────────
     DEMO_TOTAL_KM_BEFORE: float = 103.0
     DEMO_TOTAL_KM_AFTER: float = 66.0
 

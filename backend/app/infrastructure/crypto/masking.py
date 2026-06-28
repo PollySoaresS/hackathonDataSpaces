@@ -1,20 +1,18 @@
 import hashlib
 import hmac
 import re
-from datetime import date
 from core.config import get_settings
 
 settings = get_settings()
 
 
-def _dynamic_salt(device_id: str) -> str:
-    today = date.today().isoformat()
-    return f"{device_id}:{today}"
-
-
 def hmac_mask(value: str, entity_type: str, device_id: str = "alba-demo") -> str:
-    salt = _dynamic_salt(device_id)
-    key = (settings.HMAC_SECRET + salt).encode()
+    """
+    Enmascara un valor PHI con HMAC-SHA256 determinista.
+    Salt fijo (HMAC_SALT) + device_id → mismo input produce siempre el mismo token.
+    Requisito RGPD: reproductibilidad para auditorías forenses.
+    """
+    key = (settings.HMAC_SECRET + settings.HMAC_SALT + device_id).encode()
     digest = hmac.new(key, value.encode(), hashlib.sha256).hexdigest()[:8]
     return f"[{entity_type}_HMAC:{digest}...]"
 

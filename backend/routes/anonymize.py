@@ -52,7 +52,7 @@ async def anonymize_text(req: AnonymizeRequest = Body(...)):
     Anonimiza texto con PHI (datos sanitarios / logísticos).
 
     Modelos disponibles:
-    - groq: llama3-8b-8192 · sub-100ms · temperature=0.0
+    - groq: llama-3.1-8b-instant · sub-100ms · temperature=0.0
     - salamandra: Salamandra-7B BSC (ALIA Kit) · NER español superior
     - auto: intenta Salamandra, fallback a Groq
     """
@@ -62,13 +62,16 @@ async def anonymize_text(req: AnonymizeRequest = Body(...)):
         "language": "es-ES",
         "sector": "sanitario-logistico",
     }
-    return await use_case.execute(
+    result = await use_case.execute(
         req.text,
         req.device_id,
         req.model,
         context_vars,
         req.strict_mode,
     )
+    # RGPD: no devolver el texto original con PHI al cliente
+    result.pop("original", None)
+    return result
 
 
 @router.get("/demo")
@@ -80,4 +83,6 @@ async def demo_anonymize(
     model: str = Query(default="alia_groq_joint", description="Modo de anonimización"),
 ):
     """Demo rápido de anonimización para el hackathon."""
-    return await use_case.execute(text, model=model)
+    result = await use_case.execute(text, model=model)
+    result.pop("original", None)
+    return result

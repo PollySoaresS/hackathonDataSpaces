@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import logging
 from math import radians, sin, cos, atan2, sqrt
+from app.infrastructure.utils.geo import haversine_km
 
 from app.domain.ports.climate_port import ClimatePort
 from app.domain.entities.climate_risk import ClimateRisk, ClimateRiskLevel
@@ -99,14 +100,6 @@ _CV_CLIMATE_ZONES: list[tuple[float, float, float, float, float, float]] = [
 ]
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
-
-
 def _classify_level(heat: float, fire: float, flood: float, drought: float) -> ClimateRiskLevel:
     """Clasificación compuesta del nivel de riesgo climático."""
     composite = 0.35 * heat + 0.30 * fire + 0.25 * flood + 0.10 * drought
@@ -127,7 +120,7 @@ def _static_lookup(lat: float, lon: float) -> tuple[float, float, float, float]:
     heat = fire = flood = drought = 0.0
 
     for zlat, zlon, zh, zf, zfl, zd in _CV_CLIMATE_ZONES:
-        dist = _haversine_km(lat, lon, zlat, zlon)
+        dist = haversine_km(lat, lon, zlat, zlon)
         dist = max(dist, 0.1)       # evitar división por cero
         w = 1.0 / (dist ** 2)       # IDW potencia 2
         total_weight += w

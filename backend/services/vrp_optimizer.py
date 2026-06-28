@@ -6,8 +6,8 @@ Factores CO₂: EU Regulation 2019/1242
 
 from dataclasses import dataclass, field
 from typing import Literal
-from math import sqrt
 from core.config import get_settings
+from app.infrastructure.utils.geo import haversine_km
 
 settings = get_settings()
 
@@ -53,16 +53,6 @@ class Route:
             self.co2_kg = (self.distance_km * CO2_FACTORS[self.vehicle.type]) / 1000.0
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Distancia aproximada entre dos coordenadas (suficiente para demo urbano)."""
-    R = 6371.0
-    from math import radians, sin, cos, atan2
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
-    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
-
-
 def clarke_wright_savings(
     stops: list[Stop],
     vehicles: list[Vehicle],
@@ -87,7 +77,7 @@ def clarke_wright_savings(
 
     # Distancia de cada parada al depósito
     d_depot: dict[str, float] = {
-        s.id: _haversine_km(depot.depot_lat, depot.depot_lon, s.lat, s.lon)
+        s.id: haversine_km(depot.depot_lat, depot.depot_lon, s.lat, s.lon)
         for s in stops
     }
 
@@ -106,7 +96,7 @@ def clarke_wright_savings(
     for i, si in enumerate(stops):
         for j, sj in enumerate(stops):
             if i < j:
-                raw = _haversine_km(si.lat, si.lon, sj.lat, sj.lon)
+                raw = haversine_km(si.lat, si.lon, sj.lat, sj.lon)
                 d_pair[(si.id, sj.id)] = raw
                 # Penalizar por riesgo del destino (j)
                 d_pair_eff[(si.id, sj.id)] = _eff(raw, sj.id)
@@ -146,9 +136,9 @@ def clarke_wright_savings(
         dist = 0.0
         current_lat, current_lon = v.depot_lat, v.depot_lon
         for stop in vstops:
-            dist += _haversine_km(current_lat, current_lon, stop.lat, stop.lon)
+            dist += haversine_km(current_lat, current_lon, stop.lat, stop.lon)
             current_lat, current_lon = stop.lat, stop.lon
-        dist += _haversine_km(current_lat, current_lon, v.depot_lat, v.depot_lon)
+        dist += haversine_km(current_lat, current_lon, v.depot_lat, v.depot_lon)
 
         co2_kg = (dist * CO2_FACTORS[v.type]) / 1000.0
         total_km_after += dist

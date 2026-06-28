@@ -1,7 +1,7 @@
 """
 ALBA data_IA — Backend FastAPI
 Optimizador de rutas urbanas + anonimización PHI
-Stack: FastAPI · Groq llama3-8b-8192 · Salamandra-7B (ALIA/HuggingFace)
+Stack: FastAPI · Groq llama-3.1-8b-instant · Salamandra-7B (ALIA/HuggingFace)
 """
 
 import os

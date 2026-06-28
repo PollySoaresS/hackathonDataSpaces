@@ -16,11 +16,11 @@ Fallback: si AEMET no responde (sin API key, timeout, mant.) →
 from __future__ import annotations
 
 import logging
-from math import radians, sin, cos, atan2, sqrt
 
 import httpx
 import json as _json
 from core.config import get_settings
+from app.infrastructure.utils.geo import haversine_km
 from app.domain.ports.weather_port import WeatherPort
 from app.domain.entities.weather_risk import (
     WeatherObservation,
@@ -36,14 +36,6 @@ _AEMET_BASE = "https://opendata.aemet.es/opendata/api"
 _W_HEAT  = 0.50
 _W_STORM = 0.30
 _W_WIND  = 0.20
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
 def _compute_heat_risk(temp_c: float) -> float:
@@ -182,7 +174,7 @@ class AemetAdapter(WeatherPort):
             except (TypeError, ValueError):
                 continue
 
-            dist = _haversine_km(lat, lon, slat, slon)
+            dist = haversine_km(lat, lon, slat, slon)
             if dist < best_dist:
                 best_dist = dist
                 best = s

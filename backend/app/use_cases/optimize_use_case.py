@@ -10,7 +10,6 @@ class OptimizeUseCase:
         stops: list[dict],
         vehicles: list[dict],
         use_demo: bool = True,
-        climate_risk_weight: float = 0.0,
     ) -> dict:
         if use_demo:
             return self.service.optimize_demo()

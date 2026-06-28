@@ -1,6 +1,6 @@
 from app.domain.ports.anonymization_port import AnonymizationPort
 from app.infrastructure.crypto.masking import hmac_mask, regex_anonymize
-from services.anonymizer import anonymize_with_deepseek, anonymize_with_groq, anonymize_with_salamandra
+from app.infrastructure.ai_clients.ner_clients import anonymize_with_deepseek, anonymize_with_groq, anonymize_with_salamandra
 
 
 class AnonymizationAdapter(AnonymizationPort):
