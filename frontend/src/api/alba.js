@@ -1,5 +1,5 @@
 /**
- * API client — ALBA data_IA
+ * API client — ECOFLUX
  * Conecta el frontend React con el backend FastAPI
  */
 
@@ -23,6 +23,34 @@ export const optimizeRoutes = (useDemo = true) =>
   apiFetch("/api/optimize/", {
     method: "POST",
     body: JSON.stringify({ use_demo: useDemo }),
+  });
+
+/** Crear operador demo / real si el backend lo expone */
+export const createOperator = (operator) =>
+  apiFetch("/api/operators", {
+    method: "POST",
+    body: JSON.stringify(operator),
+  });
+
+/** Crear solicitud de entrega por área, sin coordenadas por defecto */
+export const createDelivery = (delivery) =>
+  apiFetch("/api/deliveries", {
+    method: "POST",
+    body: JSON.stringify(delivery),
+  });
+
+/** Analizar solapamiento entre operadores */
+export const analyzeOverlap = (payload) =>
+  apiFetch("/api/overlap-analysis", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+/** Optimizar ruta con puntos dinámicos seleccionados por el usuario */
+export const optimizeDynamicRoute = (payload) =>
+  apiFetch("/api/routes/optimize-dynamic", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 
 /** Anonimizar texto PHI */

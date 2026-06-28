@@ -1,136 +1,103 @@
 /**
- * MapPanel — React-Leaflet mapa de Valencia con rutas optimizadas
- * CRÍTICO: z-index: 9999 para overlay sobre capas Leaflet (que van hasta 650)
+ * MapPanel — selección dinámica Leaflet para ECOFLUX.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 
-// Datos de rutas: coordenadas reales de Valencia
-const ROUTES = {
-  before: [
-    {
-      id: "A",
-      name: "El Carmen",
-      color: "#ff5050",
-      type: "Diésel",
-      paths: [
-        [[39.4736, -0.3799], [39.4720, -0.3810], [39.4701, -0.3814], [39.4742, -0.3790]],
-        [[39.4742, -0.3790], [39.4736, -0.3799]],
-        [[39.4701, -0.3814], [39.4720, -0.3810], [39.4736, -0.3799]],
-      ],
-      dash: [5, 5],
-    },
-    {
-      id: "B",
-      name: "Ruzafa",
-      color: "#8ebdce",
-      type: "Híbrido",
-      paths: [
-        [[39.4622, -0.3738], [39.4615, -0.3742], [39.4630, -0.3750]],
-        [[39.4630, -0.3750], [39.4622, -0.3738]],
-      ],
-      dash: [2, 6],
-    },
-    {
-      id: "C",
-      name: "Centro hist.",
-      color: "#c2c2c2",
-      type: "EV",
-      paths: [[[39.4742, -0.3790], [39.4760, -0.3780], [39.4780, -0.3770]]],
-      dash: [10, 4],
-    },
-    {
-      id: "D",
-      name: "Benimaclet",
-      color: "#024ad8",
-      type: "EV",
-      paths: [[[39.4834, -0.3627], [39.5030, -0.3628]]],
-      dash: [1, 7],
-    },
-  ],
-  after: [
-    {
-      id: "A-opt",
-      name: "Ruta A consolidada",
-      color: "#024ad8",
-      paths: [[[39.4736, -0.3799], [39.4701, -0.3814], [39.4742, -0.3790]]],
-      dash: null,
-    },
-    {
-      id: "B-opt",
-      name: "Ruta B consolidada",
-      color: "#296ef9",
-      paths: [[[39.4622, -0.3738], [39.4615, -0.3742]]],
-      dash: null,
-    },
-    {
-      id: "C-opt",
-      name: "Ruta C EV",
-      color: "#8ebdce",
-      paths: [[[39.4742, -0.3790], [39.4780, -0.3770]]],
-      dash: null,
-    },
-    {
-      id: "D-opt",
-      name: "Ruta D EV",
-      color: "#ff5050",
-      paths: [[[39.4834, -0.3627], [39.5030, -0.3628]]],
-      dash: null,
-    },
-  ],
+const VALENCIA_CENTER = [39.4749, -0.3767];
+const routeCache = new Map();
+
+const HEATMAPS = {
+  traffic: {
+    label: "Mostrar mapa de calor de tráfico",
+    color: "#ff5050",
+    points: [
+      [39.4699, -0.3763, 420],
+      [39.4737, -0.3794, 360],
+      [39.4668, -0.3712, 330],
+      [39.4812, -0.3659, 300],
+    ],
+  },
+  demand: {
+    label: "Mostrar mapa de calor de demanda logística",
+    color: "#8ebdce",
+    points: [
+      [39.4622, -0.3738, 380],
+      [39.4768, -0.3816, 340],
+      [39.4708, -0.3629, 310],
+      [39.4542, -0.3361, 360],
+    ],
+  },
+  emissions: {
+    label: "Mostrar mapa de calor de emisiones",
+    color: "#024ad8",
+    points: [
+      [39.4701, -0.3814, 430],
+      [39.4865, -0.3688, 350],
+      [39.4588, -0.3564, 300],
+      [39.4742, -0.3790, 280],
+    ],
+  },
 };
 
-const ZONES = [
-  { center: [39.4736, -0.3799], radius: 400, color: "#e24b4a", label: "El Carmen (vulnerable)", icon: "⚠️" },
-  { center: [39.4622, -0.3738], radius: 350, color: "#eda100", label: "Ruzafa", icon: "🏫" },
-  { center: [39.4742, -0.3790], radius: 300, color: "#2a78d6", label: "Centro hist. (escolar)", icon: "🏫" },
-  { center: [39.4834, -0.3627], radius: 280, color: "#639922", label: "Benimaclet", icon: "✅" },
-];
+function icon(label, type) {
+  return L.divIcon({
+    className: `dynamic-marker dynamic-marker--${type}`,
+    html: `<span>${label}</span>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
+}
 
-const HEAT_POINTS = [
-  { center: [39.4701, -0.3814], radius: 520, intensity: "Alta", color: "#dc2626" },
-  { center: [39.4664, -0.3761], radius: 460, intensity: "Alta", color: "#ef4444" },
-  { center: [39.4739, -0.3652], radius: 420, intensity: "Media", color: "#f97316" },
-  { center: [39.4865, -0.3688], radius: 380, intensity: "Media", color: "#f59e0b" },
-  { center: [39.4588, -0.3564], radius: 320, intensity: "Baja", color: "#22c55e" },
-];
+async function roadRoute(points) {
+  if (!points?.length || points.length < 2) return { points: [], approximate: false };
+  const key = points.map((point) => `${point.lon},${point.lat}`).join(";");
 
-const streetRouteCache = new Map();
-
-async function getStreetRoute(path) {
-  const coords = path.map(([lat, lon]) => `${lon},${lat}`).join(";");
-
-  if (!streetRouteCache.has(coords)) {
-    streetRouteCache.set(
-      coords,
-      fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`)
+  if (!routeCache.has(key)) {
+    routeCache.set(
+      key,
+      fetch(`https://router.project-osrm.org/route/v1/driving/${key}?overview=full&geometries=geojson`)
         .then((res) => (res.ok ? res.json() : Promise.reject()))
-        .then((data) => (
-          data.routes?.[0]?.geometry?.coordinates?.map(([lon, lat]) => [lat, lon]) || path
-        ))
-        .catch(() => path),
+        .then((data) => {
+          const coordinates = data.routes?.[0]?.geometry?.coordinates;
+          if (!coordinates?.length) throw new Error("Sin geometría OSRM");
+          return {
+            points: coordinates.map(([lon, lat]) => ({ lat, lon })),
+            approximate: false,
+          };
+        })
+        .catch(() => ({ points, approximate: true })),
     );
   }
 
-  return streetRouteCache.get(coords);
+  return routeCache.get(key);
 }
 
-export default function MapPanel({ activeRoute, optimized }) {
+export default function MapPanel({
+  mapMode,
+  loadingPoint,
+  unloadingPoint,
+  waypoints,
+  originalRoute,
+  optimizedRoute,
+  onMapPoint,
+  canSelectPoints,
+  reloadLabel = "Manual",
+  lastUpdated,
+  isReloading,
+}) {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const layerGroup = useRef(null);
+  const [heatLayers, setHeatLayers] = useState({ traffic: false, demand: false, emissions: false });
+  const [routes, setRoutes] = useState({ original: null, optimized: null });
 
   useEffect(() => {
-    let cancelled = false;
-
-    // Inicializar mapa Leaflet
     if (!mapInstance.current && mapRef.current) {
-      if (!L) return;
-
       const map = L.map(mapRef.current, {
-        center: [39.4749, -0.3767], // Valencia centro
-        zoom: 14,
+        center: VALENCIA_CENTER,
+        zoom: 13,
         zoomControl: true,
       });
 
@@ -141,121 +108,125 @@ export default function MapPanel({ activeRoute, optimized }) {
 
       layerGroup.current = L.layerGroup().addTo(map);
       mapInstance.current = map;
-
-      // Añadir zonas vulnerables
-      ZONES.forEach((zone) => {
-        L.circle(zone.center, {
-          radius: zone.radius,
-          color: zone.color,
-          fillColor: zone.color,
-          fillOpacity: 0.12,
-          weight: 1.5,
-          opacity: 0.5,
-        }).addTo(map).bindTooltip(`${zone.icon} ${zone.label}`, { permanent: false });
-      });
-
-      // Capa térmica aproximada del reto: radios concéntricos por prioridad de calentamiento.
-      HEAT_POINTS.forEach((point) => {
-        L.circle(point.center, {
-          radius: point.radius,
-          color: point.color,
-          fillColor: point.color,
-          fillOpacity: 0.1,
-          weight: 1,
-          opacity: 0.35,
-        }).addTo(map).bindTooltip(`Zona térmica ${point.intensity}`, { permanent: false });
-      });
     }
+  }, []);
 
-    // Actualizar rutas según estado
-    if (layerGroup.current && mapInstance.current) {
-      const drawRoutes = async () => {
-        layerGroup.current.clearLayers();
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map) return undefined;
 
-        const routes = optimized ? ROUTES.after : ROUTES.before;
-        const routedPaths = await Promise.all(
-          routes.flatMap((route, routeIndex) => (
-            route.paths.map(async (path) => ({ route, routeIndex, path: await getStreetRoute(path) }))
-          )),
-        );
+    const handleClick = (event) => {
+      if (canSelectPoints && mapMode !== "none") onMapPoint(event.latlng);
+    };
 
-        if (cancelled || !layerGroup.current) return;
+    map.on("click", handleClick);
+    return () => map.off("click", handleClick);
+  }, [canSelectPoints, mapMode, onMapPoint]);
 
-        layerGroup.current.clearLayers();
-        routedPaths.forEach(({ route, routeIndex, path }) => {
-          const selected = routeIndex === activeRoute;
-          const polyline = L.polyline(path, {
-            color: route.color,
-            weight: selected ? 6 : optimized ? 4 : 3,
-            opacity: selected ? 1 : 0.68,
-            dashArray: route.dash ? route.dash.join(",") : null,
-            lineCap: "round",
-            lineJoin: "round",
-          });
-          polyline.bindTooltip(route.name);
-          layerGroup.current.addLayer(polyline);
-        });
-      };
-
-      drawRoutes();
-    }
-
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([roadRoute(originalRoute), roadRoute(optimizedRoute)]).then(([original, optimized]) => {
+      if (!cancelled) setRoutes({ original, optimized });
+    });
     return () => {
       cancelled = true;
     };
-  }, [optimized, activeRoute]);
+  }, [originalRoute, optimizedRoute]);
+
+  useEffect(() => {
+    if (!layerGroup.current) return;
+    layerGroup.current.clearLayers();
+
+    Object.entries(HEATMAPS).forEach(([key, config]) => {
+      if (!heatLayers[key]) return;
+      config.points.forEach(([lat, lon, radius]) => {
+        L.circle([lat, lon], {
+          radius,
+          color: config.color,
+          fillColor: config.color,
+          fillOpacity: 0.12,
+          opacity: 0.22,
+          weight: 1,
+          interactive: false,
+        }).addTo(layerGroup.current);
+      });
+    });
+
+    if (routes.original?.points.length > 1) {
+      L.polyline(routes.original.points.map((point) => [point.lat, point.lon]), {
+        color: "#ff5050",
+        weight: 4,
+        opacity: routes.original.approximate ? 0.45 : 0.82,
+        dashArray: routes.original.approximate ? "2,8" : "6,6",
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layerGroup.current).bindTooltip(routes.original.approximate ? "Rutas originales aproximadas" : "Rutas originales");
+    }
+
+    if (routes.optimized?.points.length > 1) {
+      L.polyline(routes.optimized.points.map((point) => [point.lat, point.lon]), {
+        color: "#296ef9",
+        weight: 5,
+        opacity: routes.optimized.approximate ? 0.55 : 0.85,
+        dashArray: routes.optimized.approximate ? "2,8" : null,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layerGroup.current).bindTooltip(routes.optimized.approximate ? "Rutas optimizadas aproximadas" : "Rutas optimizadas");
+    }
+
+    if (loadingPoint) {
+      L.marker([loadingPoint.lat, loadingPoint.lon], { icon: icon("C", "loading") })
+        .addTo(layerGroup.current)
+        .bindTooltip("Punto de carga");
+    }
+
+    if (unloadingPoint) {
+      L.marker([unloadingPoint.lat, unloadingPoint.lon], { icon: icon("D", "unloading") })
+        .addTo(layerGroup.current)
+        .bindTooltip("Punto de descarga");
+    }
+
+    waypoints.forEach((point, index) => {
+      L.marker([point.lat, point.lon], { icon: icon(index + 1, "waypoint") })
+        .addTo(layerGroup.current)
+        .bindTooltip(`Waypoint ${index + 1}`);
+    });
+  }, [heatLayers, loadingPoint, routes, unloadingPoint, waypoints]);
+
+  const updatedAt = lastUpdated
+    ? new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(lastUpdated)
+    : "--:--:--";
 
   return (
-    <div style={{ position: "relative", height: "100%", minHeight: 420 }}>
-      {/* CRÍTICO: z-index 9999 sobre capas Leaflet (máximo z-index: 650) */}
+    <div className="dynamic-map-wrap">
       <div
         ref={mapRef}
-        style={{ width: "100%", height: "100%", minHeight: 420 }}
-        aria-label="Mapa de Valencia con rutas de entrega optimizadas"
+        className="dynamic-map"
+        aria-label="Mapa dinámico de selección de puntos de entrega"
         role="application"
       />
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          right: 12,
-          zIndex: 9999,
-          background: "var(--surface-2, #fff)",
-          border: "0.5px solid var(--border, #ddd)",
-          borderRadius: 8,
-          padding: "10px 12px",
-          minWidth: 160,
-          fontSize: 11,
-        }}
-      >
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>
-          {optimized ? "✓ Rutas ECOFLUX optimizadas" : "⚠ Rutas sin optimizar"}
-        </div>
-        <div style={{ color: "var(--text-muted, #888)" }}>
-          {optimized ? "66 km · −36% · −74% CO₂" : "103 km · 3 furgonetas duplicadas"}
-        </div>
-        <div style={{ marginTop: 6, color: "var(--text-muted, #888)" }}>
-          {optimized ? "Clarke-Wright Savings VRP ✓" : "Sin consolidación"}
-        </div>
+      <div className={`map-reload-status ${isReloading ? "map-reload-status--loading" : ""}`}>
+        <strong>Recarga en tiempo real</strong>
+        <span>{reloadLabel === "Manual" ? "Modo manual" : reloadLabel}</span>
+        <span>Última actualización: {updatedAt}</span>
       </div>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 12,
-          left: 12,
-          zIndex: 9999,
-          background: "var(--surface-2, rgba(26,26,26,0.92))",
-          border: "0.5px solid var(--border, #3d3d3d)",
-          borderRadius: 8,
-          padding: "8px 10px",
-          fontSize: 11,
-          minWidth: 180,
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 5 }}>Mapa térmico operativo</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#ff5050" }}>●</span> Alta prioridad calor</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#8ebdce" }}>●</span> Prioridad media</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#024ad8" }}>●</span> Prioridad baja</div>
+      <div className="map-layers">
+        <strong>Capas</strong>
+        {Object.entries(HEATMAPS).map(([key, config]) => (
+          <label key={key}>
+            <input
+              type="checkbox"
+              checked={heatLayers[key]}
+              onChange={(event) => setHeatLayers({ ...heatLayers, [key]: event.target.checked })}
+            />
+            {config.label}
+          </label>
+        ))}
+      </div>
+      <div className="map-legend">
+        <strong>{canSelectPoints && mapMode !== "none" ? "Modo activo" : "Selección inactiva"}</strong>
+        <span>Original: rojo · Optimizada: azul</span>
+        {(routes.original?.approximate || routes.optimized?.approximate) ? <span>Ruta aproximada: línea punteada fina</span> : null}
       </div>
     </div>
   );
