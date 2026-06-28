@@ -1,0 +1,8 @@
+# Ignorar artefactos de build y desarrollo en la imagen Docker del frontend
+node_modules/
+dist/
+.vite/
+*.log
+nohup.out
+.env
+.env.local

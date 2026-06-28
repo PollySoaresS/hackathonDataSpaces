@@ -1,0 +1,50 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: alba-frontend
+    environment:
+      VITE_API_URL: http://localhost:8001
+    ports:
+      - "5175:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+    container_name: alba-backend
+    working_dir: /app
+    env_file:
+      - ./backend/.env
+    environment:
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      HF_API_KEY: ${HF_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      HMAC_SECRET: ${HMAC_SECRET:?HMAC_SECRET debe definirse en .env (min 32 chars)}
+      ICV_WMS_URL: ${ICV_WMS_URL:-http://terramapas.icv.gva.es/0105_Delimitaciones}
+      ICV_WFS_URL: ${ICV_WFS_URL:-http://terramapas.icv.gva.es/0105_Delimitaciones}
+      ICV_WMTS_URL: ${ICV_WMTS_URL:-}
+      GIS_TIMEOUT_SECONDS: ${GIS_TIMEOUT_SECONDS:-15}
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app
+    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health').read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
