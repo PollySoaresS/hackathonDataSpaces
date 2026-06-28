@@ -1,7 +1,7 @@
 {
-  "name": "alba-data-ia-frontend",
+  "name": "ecoflux-frontend",
   "version": "1.0.0",
-  "description": "ALBA data_IA — Demostrador frontend React · Optimizador rutas urbanas Valencia",
+  "description": "ECOFLUX — Demostrador frontend React · Optimizador rutas urbanas Valencia",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.1.2",
     "leaflet": "^1.9.4",
     "ol": "^10.9.0",
     "react": "^18.3.1",

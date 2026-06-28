@@ -12,69 +12,69 @@ const ROUTES = {
     {
       id: "A",
       name: "El Carmen",
-      color: "#e24b4a",
+      color: "#ff5050",
       type: "Diésel",
       paths: [
         [[39.4736, -0.3799], [39.4720, -0.3810], [39.4701, -0.3814], [39.4742, -0.3790]],
         [[39.4742, -0.3790], [39.4736, -0.3799]],
         [[39.4701, -0.3814], [39.4720, -0.3810], [39.4736, -0.3799]],
       ],
-      dash: [8, 4],
+      dash: [5, 5],
     },
     {
       id: "B",
       name: "Ruzafa",
-      color: "#eda100",
+      color: "#8ebdce",
       type: "Híbrido",
       paths: [
         [[39.4622, -0.3738], [39.4615, -0.3742], [39.4630, -0.3750]],
         [[39.4630, -0.3750], [39.4622, -0.3738]],
       ],
-      dash: [8, 4],
+      dash: [2, 6],
     },
     {
       id: "C",
       name: "Centro hist.",
-      color: "#2a78d6",
+      color: "#c2c2c2",
       type: "EV",
       paths: [[[39.4742, -0.3790], [39.4760, -0.3780], [39.4780, -0.3770]]],
-      dash: [8, 4],
+      dash: [10, 4],
     },
     {
       id: "D",
       name: "Benimaclet",
-      color: "#639922",
+      color: "#024ad8",
       type: "EV",
       paths: [[[39.4834, -0.3627], [39.5030, -0.3628]]],
-      dash: [8, 4],
+      dash: [1, 7],
     },
   ],
   after: [
     {
       id: "A-opt",
       name: "Ruta A consolidada",
-      color: "#2a78d6",
+      color: "#024ad8",
       paths: [[[39.4736, -0.3799], [39.4701, -0.3814], [39.4742, -0.3790]]],
       dash: null,
     },
     {
       id: "B-opt",
       name: "Ruta B consolidada",
-      color: "#1baf7a",
+      color: "#296ef9",
       paths: [[[39.4622, -0.3738], [39.4615, -0.3742]]],
       dash: null,
     },
     {
       id: "C-opt",
       name: "Ruta C EV",
-      color: "#2a78d6",
+      color: "#8ebdce",
       paths: [[[39.4742, -0.3790], [39.4780, -0.3770]]],
       dash: null,
     },
     {
       id: "D-opt",
       name: "Ruta D EV",
-      color: "#639922",
+      color: "#ff5050",
       paths: [[[39.4834, -0.3627], [39.5030, -0.3628]]],
       dash: null,
     },
@@ -174,19 +174,20 @@ export default function MapPanel({ activeRoute, optimized }) {
 
         const routes = optimized ? ROUTES.after : ROUTES.before;
         const routedPaths = await Promise.all(
-          routes.flatMap((route) => (
-            route.paths.map(async (path) => ({ route, path: await getStreetRoute(path) }))
+          routes.flatMap((route, routeIndex) => (
+            route.paths.map(async (path) => ({ route, routeIndex, path: await getStreetRoute(path) }))
           )),
         );
 
         if (cancelled || !layerGroup.current) return;
 
         layerGroup.current.clearLayers();
-        routedPaths.forEach(({ route, path }) => {
+        routedPaths.forEach(({ route, routeIndex, path }) => {
+          const selected = routeIndex === activeRoute;
           const polyline = L.polyline(path, {
             color: route.color,
-            weight: optimized ? 3 : 2,
-            opacity: 0.9,
+            weight: selected ? 6 : optimized ? 4 : 3,
+            opacity: selected ? 1 : 0.68,
             dashArray: route.dash ? route.dash.join(",") : null,
             lineCap: "round",
             lineJoin: "round",
@@ -228,7 +229,7 @@ export default function MapPanel({ activeRoute, optimized }) {
         }}
       >
         <div style={{ fontWeight: 500, marginBottom: 6 }}>
-          {optimized ? "✓ Rutas ALBA optimizadas" : "⚠ Rutas sin optimizar"}
+          {optimized ? "✓ Rutas ECOFLUX optimizadas" : "⚠ Rutas sin optimizar"}
         </div>
         <div style={{ color: "var(--text-muted, #888)" }}>
           {optimized ? "66 km · −36% · −74% CO₂" : "103 km · 3 furgonetas duplicadas"}
@@ -243,8 +244,8 @@ export default function MapPanel({ activeRoute, optimized }) {
           bottom: 12,
           left: 12,
           zIndex: 9999,
-          background: "rgba(255,255,255,0.9)",
-          border: "0.5px solid var(--border, #ddd)",
+          background: "var(--surface-2, rgba(26,26,26,0.92))",
+          border: "0.5px solid var(--border, #3d3d3d)",
           borderRadius: 8,
           padding: "8px 10px",
           fontSize: 11,
@@ -252,9 +253,9 @@ export default function MapPanel({ activeRoute, optimized }) {
         }}
       >
         <div style={{ fontWeight: 600, marginBottom: 5 }}>Mapa térmico operativo</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#dc2626" }}>●</span> Alta prioridad calor</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#f59e0b" }}>●</span> Prioridad media</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#22c55e" }}>●</span> Prioridad baja</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#ff5050" }}>●</span> Alta prioridad calor</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#8ebdce" }}>●</span> Prioridad media</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "#024ad8" }}>●</span> Prioridad baja</div>
       </div>
     </div>
   );
