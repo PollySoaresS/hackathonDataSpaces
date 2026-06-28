@@ -17,6 +17,7 @@ body {
 #root { min-height: 100vh; }
 
 .app { min-height:100vh; padding:24px; background:#000000; }
+.app--light { background:#f6f8fb; color:#172033; --surface-2:rgba(255,255,255,0.94); --border:#d8e1ea; --text-muted:#5f6b7a; }
 .topbar { position:relative; display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; padding:14px 16px; overflow:hidden; background:#1a1a1a; border:1px solid #292929; border-radius:16px; }
 .topbar::after { content:""; position:absolute; top:0; right:28px; width:96px; height:100%; background:#024ad8; transform:skewX(-24deg); opacity:0.9; pointer-events:none; }
 .brand { position:relative; z-index:1; display:flex; align-items:center; gap:12px; }
@@ -36,11 +37,16 @@ body {
 .flow-actions { display:flex; justify-content:flex-end; gap:12px; }
 .choice-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
 .onboarding-choice { min-height:116px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; padding:18px; text-align:left; }
+.choice-icon { width:28px !important; height:28px !important; color:#8ebdce; }
 .onboarding-choice span { color:#c2c2c2; font-size:0.9rem; text-transform:none; letter-spacing:0; }
 .onboarding-choice--active span { color:#ffffff; }
-.company-header { display:flex; flex-wrap:wrap; gap:12px; padding:12px 14px; background:#000000; border:1px solid #024ad8; border-radius:8px; color:#ffffff; font-weight:700; }
-.stat-grid, .map-plan-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
-.stat-grid .metric-row, .map-plan-summary .metric-row { padding:10px; background:#000000; border:1px solid #3d3d3d; border-radius:8px; }
+.delivery-title-images { display:flex; justify-content:center; align-items:center; gap:14px; width:100%; margin:0 auto 16px; }
+.delivery-title-images img { width:min(180px, 30vw); height:92px; object-fit:contain; padding:10px; border:1px solid #d7e4ea; border-radius:8px; background:#f4f8fb; }
+.privacy-consent { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 14px; background:#000000; border:1px solid #3d3d3d; border-radius:8px; }
+.stats-accordion { padding:14px; background:#1a1a1a; border:1px solid #292929; border-radius:16px; }
+.stats-accordion summary { cursor:pointer; color:#8ebdce; font-weight:700; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-top:12px; }
+.stats-grid .metric-row { min-height:62px; flex-direction:column; justify-content:center; padding:10px; background:#000000; border:1px solid #3d3d3d; border-radius:8px; }
 .sidebar, .content { background:#1a1a1a; color:#ffffff; border:1px solid #292929; border-radius:16px; padding:16px; box-shadow:0 4px 20px rgba(0,0,0,0.35); }
 .sidebar-section { margin-bottom:14px; }
 .section-label { margin:0 0 8px; color:#c2c2c2; font-size:0.82rem; font-weight:700; letter-spacing:0.7px; text-transform:uppercase; }
@@ -100,6 +106,8 @@ body {
 .point-remove:hover { border-color:#ff5050; color:#ffb3b3; }
 .technical-details summary { cursor:pointer; color:#8ebdce; font-weight:700; }
 .technical-details ul { margin:10px 0 0; padding-left:18px; color:#c2c2c2; font-size:0.86rem; }
+.alternative-routes { display:flex; flex-direction:column; gap:8px; padding:14px; background:#000000; border:1px solid #3d3d3d; border-radius:8px; }
+.alternative-routes p { margin:0; color:#c2c2c2; }
 .metrics-summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; }
 .metrics-summary .metric-row { min-height:74px; flex-direction:column; justify-content:center; padding:10px; background:#000000; border:1px solid #3d3d3d; border-radius:8px; }
 .metrics-summary .metric-row span { color:#c2c2c2; font-size:0.78rem; }
@@ -119,13 +127,59 @@ body {
   .app { padding:16px; }
   .topbar, .main { display:flex; flex-direction:column; align-items:stretch; }
   .choice-grid { grid-template-columns:1fr; }
-  .map-plan-summary { grid-template-columns:1fr; }
 }
 
 @media (max-width: 640px) {
   .profile-notice { max-width:none; margin:-8px 0 16px; }
+  .delivery-title-images img { width:min(260px, 86vw); height:120px; }
   .map-refresh-select { min-width:100%; }
   .map-reload-status { left:12px; right:12px; min-width:0; }
   .map-layers { top:102px; width:calc(100% - 24px); }
   .map-legend { left:12px; right:12px; min-width:0; }
 }
+
+.app--light .topbar,
+.app--light .flow-stepper,
+.app--light .flow-card,
+.app--light .stats-accordion { background:#ffffff; border-color:#d8e1ea; color:#172033; }
+.app--light .topbar::after { opacity:0.16; }
+.app--light .brand-name,
+.app--light .route-name,
+.app--light .point-card strong,
+.app--light .metrics-summary .metric-row strong,
+.app--light .upload-card strong,
+.app--light .metric-row strong { color:#172033; }
+.app--light .brand-sub,
+.app--light .route-detail,
+.app--light .onboarding-choice span,
+.app--light .point-card span,
+.app--light .metrics-summary .metric-row span,
+.app--light .upload-card p,
+.app--light .hint,
+.app--light .technical-details ul,
+.app--light .point-summary p,
+.app--light .technical-details p,
+.app--light .alternative-routes p { color:#5f6b7a; }
+.app--light .tech-chip,
+.app--light .privacy-consent,
+.app--light .upload-card,
+.app--light .data-list,
+.app--light .analysis-card,
+.app--light .point-summary,
+.app--light .technical-details,
+.app--light .alternative-routes,
+.app--light .stats-grid .metric-row,
+.app--light .metrics-summary .metric-row { background:#f8fafc; border-color:#d8e1ea; color:#172033; }
+.app--light .profile-button { background:#ffffff !important; color:#024ad8 !important; }
+.app--light .point-card { background:#eef5ff; border-color:#8bb7ff; }
+.app--light .point-card--pending { border-color:#b9c5d2; }
+.app--light .dynamic-map-wrap { border-color:#d8e1ea; }
+.app--light .map-reload-status,
+.app--light .map-legend,
+.app--light .map-layers { background:rgba(255,255,255,0.94); border-color:#b9c5d2; color:#172033; box-shadow:0 8px 24px rgba(15,31,49,0.18); }
+.app--light .map-reload-status span,
+.app--light .map-legend span,
+.app--light .map-layers label { color:#4d5c6d; }
+.app--light .map-reload-status strong,
+.app--light .map-legend strong,
+.app--light .map-layers strong { color:#172033; }

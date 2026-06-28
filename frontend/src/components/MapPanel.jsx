@@ -7,6 +7,7 @@ import L from "leaflet";
 
 const VALENCIA_CENTER = [39.4749, -0.3767];
 const routeCache = new Map();
+const ALT_COLORS = ["#32c86a", "#eda100"];
 
 const HEATMAPS = {
   traffic: {
@@ -81,6 +82,7 @@ export default function MapPanel({
   waypoints,
   originalRoute,
   optimizedRoute,
+  alternativeRoutes = [],
   onMapPoint,
   canSelectPoints,
   reloadLabel = "Manual",
@@ -91,7 +93,7 @@ export default function MapPanel({
   const mapInstance = useRef(null);
   const layerGroup = useRef(null);
   const [heatLayers, setHeatLayers] = useState({ traffic: false, demand: false, emissions: false });
-  const [routes, setRoutes] = useState({ original: null, optimized: null });
+  const [routes, setRoutes] = useState({ original: null, optimized: null, alternatives: [] });
 
   useEffect(() => {
     if (!mapInstance.current && mapRef.current) {
@@ -125,13 +127,17 @@ export default function MapPanel({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([roadRoute(originalRoute), roadRoute(optimizedRoute)]).then(([original, optimized]) => {
-      if (!cancelled) setRoutes({ original, optimized });
+    Promise.all([roadRoute(originalRoute), roadRoute(optimizedRoute), ...alternativeRoutes.map((route) => roadRoute(route.points))]).then(([original, optimized, ...alternatives]) => {
+      if (!cancelled) setRoutes({
+        original,
+        optimized,
+        alternatives: alternatives.map((route, index) => ({ ...route, label: alternativeRoutes[index]?.label })),
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [originalRoute, optimizedRoute]);
+  }, [alternativeRoutes, originalRoute, optimizedRoute]);
 
   useEffect(() => {
     if (!layerGroup.current) return;
@@ -173,6 +179,18 @@ export default function MapPanel({
         lineJoin: "round",
       }).addTo(layerGroup.current).bindTooltip(routes.optimized.approximate ? "Rutas optimizadas aproximadas" : "Rutas optimizadas");
     }
+
+    routes.alternatives.forEach((route, index) => {
+      if (route.points.length < 2) return;
+      L.polyline(route.points.map((point) => [point.lat, point.lon]), {
+        color: ALT_COLORS[index % ALT_COLORS.length],
+        weight: 4,
+        opacity: route.approximate ? 0.45 : 0.78,
+        dashArray: route.approximate ? "2,8" : "10,6",
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(layerGroup.current).bindTooltip(route.label || `Alternativa ${index + 1}`);
+    });
 
     if (loadingPoint) {
       L.marker([loadingPoint.lat, loadingPoint.lon], { icon: icon("C", "loading") })
@@ -226,6 +244,7 @@ export default function MapPanel({
       <div className="map-legend">
         <strong>{canSelectPoints && mapMode !== "none" ? "Modo activo" : "Selección inactiva"}</strong>
         <span>Original: rojo · Optimizada: azul</span>
+        {routes.alternatives.length ? <span>Alternativas: verde / ámbar</span> : null}
         {(routes.original?.approximate || routes.optimized?.approximate) ? <span>Ruta aproximada: línea punteada fina</span> : null}
       </div>
     </div>
