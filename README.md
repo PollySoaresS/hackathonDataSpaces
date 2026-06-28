@@ -1,8 +1,209 @@
-# ALBA data_IA — Memoria Técnica
+# ECOFLUX — ALBA data_IA
 
 **Plataforma territorial inteligente para la Comunitat Valenciana**  
-Optimización de rutas urbanas · Anonimización PHI · Análisis de riesgo climático  
-Reto IABiomed · Valencia · 2026
+Optimización de rutas urbanas · Anonimización PHI · Análisis de riesgo climático · Pipeline IA ensemble anti-alucinación  
+Reto IABiomed 2 · Valencia · 2026
+
+---
+
+## Guía para el equipo de frontend — Ampliaciones pendientes
+
+> Elaborada por el arquitecto de sistema. Lee esta sección **antes de tocar código**.  
+> Stack actual: React 18 + Vite + MUI v5 + Leaflet + Recharts. Backend: FastAPI en `localhost:8001`.
+
+### Estado actual verificado ✅
+
+| Módulo | Estado | Endpoint backend |
+|---|---|---|
+| Mapa Leaflet con rutas Valencia | ✅ Funciona | — (datos hardcoded en `MapPanel.jsx`) |
+| Mapa ICV (WMS/WFS) | ✅ Funciona | `GET /api/gis/layers` |
+| Métricas CO₂ básicas | ✅ Funciona | `GET /api/optimize/demo` |
+| Optimización Clarke-Wright | ✅ Funciona | `POST /api/optimize/` |
+| Anonimización PHI | ✅ Funciona | `POST /api/anonymize/` |
+| Pipeline IA ensemble 3 capas | ✅ Backend listo | respuesta en `summary` del optimize |
+
+---
+
+### Ampliación 1 — Panel de análisis IA (PRIORIDAD ALTA)
+
+**Qué falta:** el backend ya devuelve `summary` con el análisis del ensemble IA tras cada optimización. El frontend no lo muestra.
+
+**Dónde tocar:** `src/App.jsx` → guardar en state y pasar al sidebar. Crear `src/components/IAPanel.jsx`.
+
+**Contrato de datos** (lo que devuelve `POST /api/optimize/`):
+```json
+{
+  "routes": [...],
+  "distance_before_km": 103,
+  "distance_after_km": 66,
+  "co2_savings_kg": 11.7,
+  "summary": "La ruta tiene una eficiencia alta con 5.2 km y 0 kg CO₂.",
+  "confidence": 0.95,
+  "hallucination": false
+}
+```
+
+**Código de partida para `IAPanel.jsx`:**
+```jsx
+// src/components/IAPanel.jsx
+export default function IAPanel({ summary, confidence, hallucination }) {
+  if (!summary) return null;
+  const color = hallucination ? "#ff5050" : confidence > 0.8 ? "#32c86a" : "#eda100";
+  return (
+    <section style={{ padding: "12px", border: `1px solid ${color}`, borderRadius: 8, marginTop: 16 }}>
+      <p style={{ fontSize: 13, color: "#c2c2c2" }}>{summary}</p>
+      <span style={{ fontSize: 11, color }}>
+        Confianza: {(confidence * 100).toFixed(0)}%
+        {hallucination && " ⚠️ revisar"}
+      </span>
+    </section>
+  );
+}
+```
+
+**Integración en App.jsx:**
+```jsx
+// Añadir al state:
+const [iaResult, setIaResult] = useState(null);
+
+// En handleOptimize():
+const result = await optimizeRoutes(true);
+setIaResult(result); // { summary, confidence, hallucination }
+setOptimized(true);
+
+// En el JSX sidebar:
+<IAPanel {...iaResult} />
+```
+
+---
+
+### Ampliación 2 — Métricas CO₂ con gráfica Recharts (PRIORIDAD ALTA)
+
+**Qué falta:** `MetricsPanel.jsx` solo muestra texto plano. Recharts ya está instalado.
+
+**Contrato:** `GET /api/metrics/impact?operators=2500` devuelve:
+```json
+{
+  "operators": 2500,
+  "co2_saved_per_day_kg": 29250,
+  "co2_saved_per_year_t": 10676,
+  "equivalent_cars_removed": 1069
+}
+```
+
+**Patrón a seguir en MetricsPanel.jsx:**
+```jsx
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+
+const chartData = [
+  { name: "Antes", co2: metrics.co2_before_kg, fill: "#ff5050" },
+  { name: "Después", co2: metrics.co2_after_kg, fill: "#32c86a" },
+];
+
+<ResponsiveContainer width="100%" height={160}>
+  <BarChart data={chartData}>
+    <XAxis dataKey="name" tick={{ fill: "#c2c2c2", fontSize: 11 }} />
+    <YAxis tick={{ fill: "#c2c2c2", fontSize: 11 }} unit=" kg" />
+    <Tooltip formatter={(v) => `${v} kg CO₂`} />
+    <Bar dataKey="co2" radius={[4, 4, 0, 0]}>
+      {chartData.map((e, i) => <Cell key={i} fill={e.fill} />)}
+    </Bar>
+  </BarChart>
+</ResponsiveContainer>
+```
+
+---
+
+### Ampliación 3 — Entrada de rutas personalizadas por el usuario
+
+**Qué falta:** permitir al usuario pegar coordenadas o seleccionar paradas en el mapa y optimizarlas.
+
+**Contrato `POST /api/optimize/`** con paradas reales:
+```json
+{
+  "stops": [
+    { "id": "1", "lat": 39.473, "lon": -0.378, "demand": 1 },
+    { "id": "2", "lat": 39.465, "lon": -0.366, "demand": 1 }
+  ],
+  "use_demo": false
+}
+```
+
+**Patrón recomendado:** campo `textarea` en sidebar + `JSON.parse()` + llamar `optimizeRoutes(stops)`.  
+**Importante:** añadir en `api/alba.js`:
+```js
+export const optimizeRoutes = (useDemoOrStops) => {
+  const body = typeof useDemoOrStops === "boolean"
+    ? { use_demo: useDemoOrStops }
+    : { stops: useDemoOrStops, use_demo: false };
+  return apiFetch("/api/optimize/", { method: "POST", body: JSON.stringify(body) });
+};
+```
+
+---
+
+### Ampliación 4 — Anonimizador de texto (panel ya existe, falta conectarlo)
+
+**Componente:** `AnonymizerPanel.jsx` ya está creado.  
+**Falta:** importarlo en `App.jsx` y añadirlo como cuarta tab.
+
+```jsx
+// App.jsx — añadir tab:
+const TABS = ["Mapa urbano", "Mapa ICV", "Métricas CO₂", "Anonimizador PHI"];
+
+// En el render de tabs:
+{activeTab === 3 && <AnonymizerPanel />}
+```
+
+**Endpoint:** `POST /api/anonymize/` — ver `src/api/alba.js` → `anonymizeText()`.
+
+---
+
+### Reglas de arquitectura — NO violar
+
+1. **Nunca hardcodear la URL del backend.** Siempre usar `VITE_API_URL` via `src/api/alba.js`.
+2. **El estado global vive en `App.jsx`.** Los componentes son puros (reciben props, no hacen fetch propios excepto `GisMapPanel`).
+3. **El tema MUI es la única fuente de colores.** No usar colores inline ad-hoc; usar `theme.palette.success.main`, etc.
+4. **Leaflet y MUI tienen conflicto de z-index.** Los overlays sobre el mapa necesitan `zIndex: 9999` explícito.
+5. **CORS ya configurado** para `localhost:5173` y `localhost:5175`. Si cambias el puerto, actualiza `ALLOWED_ORIGINS` en `docker-compose.yml`.
+6. **No instalar nuevas dependencias** sin confirmar con el arquitecto. El `package-lock.json` se rompe fácil en Docker.
+
+---
+
+### Flujo de desarrollo local
+
+```bash
+# 1. Arrancar todo (primera vez o tras pull)
+docker compose up --build -d
+
+# 2. Ver logs del frontend en tiempo real
+docker logs -f alba-frontend
+
+# 3. Si instalas un paquete nuevo, rebuild obligatorio
+docker compose restart frontend
+# O si cambió package.json:
+docker compose up --build -d frontend
+
+# 4. Backend docs interactivos
+http://localhost:8001/api/docs
+
+# 5. Health check
+curl http://localhost:8001/api/health
+```
+
+---
+
+### Variables de entorno necesarias (`backend/.env`)
+
+```env
+GROQ_API_KEY=gsk_...        # Pipeline IA ensemble (obligatorio)
+HMAC_SECRET=...             # Mínimo 32 chars (obligatorio)
+HF_API_KEY=hf_...           # HuggingFace Salamandra (opcional, fallback)
+DEEPSEEK_API_KEY=sk-...     # DeepSeek (opcional, fallback)
+AEMET_API_KEY=...           # Datos meteorológicos CV (opcional, Fase 2)
+```
+
+---
 
 ---
 
