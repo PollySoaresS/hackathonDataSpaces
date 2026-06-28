@@ -8,7 +8,7 @@ import React, { useState } from "react";
 import { anonymizeText } from "../api/alba";
 
 export default function AnonymizerPanel() {
-  const [text, setText] = useState("Paciente: María López, C/ Colón 14, 46004 Valencia");
+  const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);

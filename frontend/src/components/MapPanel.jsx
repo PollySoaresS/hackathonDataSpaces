@@ -96,12 +96,34 @@ const HEAT_POINTS = [
   { center: [39.4588, -0.3564], radius: 320, intensity: "Baja", color: "#22c55e" },
 ];
 
+const streetRouteCache = new Map();
+
+async function getStreetRoute(path) {
+  const coords = path.map(([lat, lon]) => `${lon},${lat}`).join(";");
+
+  if (!streetRouteCache.has(coords)) {
+    streetRouteCache.set(
+      coords,
+      fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`)
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => (
+          data.routes?.[0]?.geometry?.coordinates?.map(([lon, lat]) => [lat, lon]) || path
+        ))
+        .catch(() => path),
+    );
+  }
+
+  return streetRouteCache.get(coords);
+}
+
 export default function MapPanel({ activeRoute, optimized }) {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const layerGroup = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     // Inicializar mapa Leaflet
     if (!mapInstance.current && mapRef.current) {
       if (!L) return;
@@ -147,22 +169,39 @@ export default function MapPanel({ activeRoute, optimized }) {
 
     // Actualizar rutas según estado
     if (layerGroup.current && mapInstance.current) {
-      layerGroup.current.clearLayers();
+      const drawRoutes = async () => {
+        layerGroup.current.clearLayers();
 
-      const routes = optimized ? ROUTES.after : ROUTES.before;
-      routes.forEach((route) => {
-        route.paths.forEach((path) => {
+        const routes = optimized ? ROUTES.after : ROUTES.before;
+        const routedPaths = await Promise.all(
+          routes.flatMap((route) => (
+            route.paths.map(async (path) => ({ route, path: await getStreetRoute(path) }))
+          )),
+        );
+
+        if (cancelled || !layerGroup.current) return;
+
+        layerGroup.current.clearLayers();
+        routedPaths.forEach(({ route, path }) => {
           const polyline = L.polyline(path, {
             color: route.color,
             weight: optimized ? 3 : 2,
             opacity: 0.9,
             dashArray: route.dash ? route.dash.join(",") : null,
+            lineCap: "round",
+            lineJoin: "round",
           });
           polyline.bindTooltip(route.name);
           layerGroup.current.addLayer(polyline);
         });
-      });
+      };
+
+      drawRoutes();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [optimized, activeRoute]);
 
   return (

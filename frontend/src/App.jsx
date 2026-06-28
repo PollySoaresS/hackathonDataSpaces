@@ -7,7 +7,6 @@
 import React, { useState, useEffect } from "react";
 import MapPanel from "./components/MapPanel";
 import MetricsPanel from "./components/MetricsPanel";
-import AnonymizerPanel from "./components/AnonymizerPanel";
 import RouteList from "./components/RouteList";
 import GisMapPanel from "./components/GisMapPanel";
 import { fetchDemoMetrics, optimizeRoutes } from "./api/alba";
@@ -88,10 +87,6 @@ export default function App() {
               onSelect={setActiveRoute}
               optimized={optimized}
             />
-          </section>
-
-          <section className="sidebar-section">
-            <AnonymizerPanel />
           </section>
         </aside>
 
