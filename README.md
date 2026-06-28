@@ -13,14 +13,16 @@ Reto IABiomed 2 · Valencia · 2026
 
 ### Estado actual verificado ✅
 
-| Módulo | Estado | Endpoint backend |
-|---|---|---|
-| Mapa Leaflet con rutas Valencia | ✅ Funciona | — (datos hardcoded en `MapPanel.jsx`) |
-| Mapa ICV (WMS/WFS) | ✅ Funciona | `GET /api/gis/layers` |
-| Métricas CO₂ básicas | ✅ Funciona | `GET /api/optimize/demo` |
-| Optimización Clarke-Wright | ✅ Funciona | `POST /api/optimize/` |
-| Anonimización PHI | ✅ Funciona | `POST /api/anonymize/` |
-| Pipeline IA ensemble 3 capas | ✅ Backend listo | respuesta en `summary` del optimize |
+| Módulo | Archivo | Estado | Nota importante |
+|---|---|---|---|
+| Mapa Leaflet rutas Valencia | `MapPanel.jsx` | ✅ Funciona | Rutas hardcoded, NO conectado al backend |
+| Lista de rutas sidebar | `RouteList.jsx` | ✅ Funciona | 4 rutas hardcoded con MUI (datos fijos) |
+| Mapa ICV OpenLayers | `GisMapPanel.jsx` | ✅ Funciona | WMS/WFS real via `api/gis.js` → `/api/gis/*` |
+| Métricas CO₂ texto | `MetricsPanel.jsx` | ✅ Funciona | Solo texto plano, sin gráfica |
+| Optimización Clarke-Wright | `api/alba.js` | ✅ Conectado | `POST /api/optimize/` operativo |
+| Anonimizador PHI | `AnonymizerPanel.jsx` | ✅ Completo | Tiene fallback offline HMAC — **pero NO está en ninguna tab de App.jsx** |
+| Pipeline IA ensemble 3 capas | backend | ✅ Backend listo | Respuesta en campo `summary` del optimize — frontend no lo muestra |
+| FIWARE NGSI-LD | `FiwarePipeline.jsx` | ⚠️ Stub vacío | Existe el archivo pero NO está importado ni conectado a nada |
 
 ---
 
@@ -142,20 +144,38 @@ export const optimizeRoutes = (useDemoOrStops) => {
 
 ---
 
-### Ampliación 4 — Anonimizador de texto (panel ya existe, falta conectarlo)
+### Ampliación 4 — Anonimizador de texto (panel completo, falta tab)
 
-**Componente:** `AnonymizerPanel.jsx` ya está creado.  
-**Falta:** importarlo en `App.jsx` y añadirlo como cuarta tab.
+**Componente:** `AnonymizerPanel.jsx` ya está **100% implementado** con:
+- Textarea + botón dictado por voz (SpeechRecognition API)
+- Llamada a `POST /api/anonymize/` con modelo `alia_groq_joint`
+- **Fallback offline completo** con regex + HMAC — funciona aunque falle la API
+
+**Solo falta:** añadirlo como 4ª tab en `App.jsx` (3 líneas):
 
 ```jsx
-// App.jsx — añadir tab:
+// App.jsx — añadir import arriba:
+import AnonymizerPanel from "./components/AnonymizerPanel";
+
+// Añadir tab:
 const TABS = ["Mapa urbano", "Mapa ICV", "Métricas CO₂", "Anonimizador PHI"];
 
 // En el render de tabs:
 {activeTab === 3 && <AnonymizerPanel />}
 ```
 
-**Endpoint:** `POST /api/anonymize/` — ver `src/api/alba.js` → `anonymizeText()`.
+---
+
+### Ampliación 5 — FIWARE NGSI-LD (stub vacío a desarrollar)
+
+**Componente:** `FiwarePipeline.jsx` existe pero tiene solo 3 bullets de texto. No está importado en ningún sitio.
+
+**Qué debe hacer:** visualizar el pipeline de contexto urbano FIWARE — entidades NGSI-LD de rutas, sensores y eventos en tiempo real.
+
+**Punto de partida recomendado:**
+- Importarlo en `App.jsx` como 5ª tab: `"Pipeline FIWARE"`
+- Conectarlo al endpoint `/api/territorial/` que ya existe en el backend
+- Mostrar las entidades territoriales como tarjetas o timeline
 
 ---
 
